@@ -72858,6 +72858,15 @@ function readEmbedSize(embed) {
   }
   return {};
 }
+function isJpeg(buffer) {
+  const bytes = new Uint8Array(buffer, 0, Math.min(3, buffer.byteLength));
+  return bytes.length === 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+}
+async function toDisplayableBlob(buffer) {
+  if (isJpeg(buffer))
+    return new Blob([buffer], { type: "image/jpeg" });
+  return decodeHeicToPngBlob(buffer);
+}
 async function decodeHeicToPngBlob(buffer) {
   const images = new import_libheif_js.HeifDecoder().decode(buffer);
   if (!images || images.length === 0)
@@ -72987,7 +72996,7 @@ var HeicViewerPlugin = class extends import_obsidian.Plugin {
   async convert(embed, file, src, placeholder) {
     try {
       const buffer = await this.app.vault.readBinary(file);
-      const url = URL.createObjectURL(await decodeHeicToPngBlob(buffer));
+      const url = URL.createObjectURL(await toDisplayableBlob(buffer));
       this.remember(file.path, url);
       placeholder.remove();
       this.showImage(embed, url, src);

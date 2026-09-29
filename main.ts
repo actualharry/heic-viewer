@@ -99,6 +99,21 @@ function readEmbedSize(embed: HTMLElement): { width?: number; height?: number } 
  *  HEIC decoding                                                             *
  * ========================================================================== */
 
+// Some exporters (Google Photos, Samsung share sheets) convert photos to JPEG
+// but keep the .heic extension. libheif rejects those with "no image found",
+// so sniff the JPEG SOI marker (FF D8 FF) and let the browser show it as-is.
+function isJpeg(buffer: ArrayBuffer): boolean {
+    const bytes = new Uint8Array(buffer, 0, Math.min(3, buffer.byteLength));
+    return bytes.length === 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+// Returns a blob the browser can display: the original bytes for mislabelled
+// JPEGs, otherwise a PNG decoded from HEIC/HEIF.
+async function toDisplayableBlob(buffer: ArrayBuffer): Promise<Blob> {
+    if (isJpeg(buffer)) return new Blob([buffer], { type: 'image/jpeg' });
+    return decodeHeicToPngBlob(buffer);
+}
+
 // Decodes HEIC/HEIF bytes into a PNG blob, preserving the alpha channel.
 async function decodeHeicToPngBlob(buffer: ArrayBuffer): Promise<Blob> {
     const images = new HeifDecoder().decode(buffer);
@@ -254,7 +269,7 @@ export default class HeicViewerPlugin extends Plugin {
     private async convert(embed: HTMLElement, file: TFile, src: string, placeholder: HTMLElement) {
         try {
             const buffer = await this.app.vault.readBinary(file);
-            const url = URL.createObjectURL(await decodeHeicToPngBlob(buffer));
+            const url = URL.createObjectURL(await toDisplayableBlob(buffer));
             this.remember(file.path, url);
             placeholder.remove();
             this.showImage(embed, url, src);
